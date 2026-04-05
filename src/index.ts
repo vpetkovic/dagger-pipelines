@@ -9,7 +9,6 @@ import {
   dag,
   Container,
   Directory,
-  File,
   Secret,
   object,
   func,
@@ -150,23 +149,40 @@ export class DaggerPipelines {
     configuration: string = "Release",
     testProject: string = "",
   ): Promise<Container> {
-    // Run tests (this chains restore → build → test)
-    await this.test(
-      source,
-      solution,
-      dotnetVersion,
-      configuration,
-      testProject,
-    )
+    const built = this.build(source, solution, dotnetVersion, configuration)
 
-    // Pack (chains restore → build → pack)
-    return this.pack(
-      source,
-      solution,
-      projects,
-      version,
-      dotnetVersion,
-      configuration,
-    )
+    // Run tests — fail fast before packing
+    const target = testProject || solution
+    await built
+      .withExec([
+        "dotnet",
+        "test",
+        target,
+        "--no-build",
+        "--configuration",
+        configuration,
+        "--verbosity",
+        "normal",
+      ])
+      .stdout()
+
+    // Pack from the same built container
+    const projectList = projects.split(",").map((p) => p.trim())
+    let container = built
+    for (const project of projectList) {
+      container = container.withExec([
+        "dotnet",
+        "pack",
+        project,
+        "--no-build",
+        "--configuration",
+        configuration,
+        "--output",
+        "/packages",
+        `/p:Version=${version}`,
+      ])
+    }
+
+    return container
   }
 }

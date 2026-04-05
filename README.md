@@ -50,13 +50,13 @@ dagger call build --source=. --solution="MyLib.sln"
 # Just test
 dagger call test --source=. --solution="MyLib.sln" --test-project="tests/MyLib.Tests/MyLib.Tests.csproj"
 
-# Pack then publish
-dagger call pack \
+# CI then publish
+dagger call ci \
   --source=. \
   --solution="MyLib.sln" \
   --projects="src/MyLib/MyLib.csproj" \
   --version="2.0.0" \
-| dagger call publish --nuget-api-key=env:NUGET_API_KEY
+  publish --nuget-api-key=env:NUGET_API_KEY
 ```
 
 ### Use from GitHub Actions
@@ -82,7 +82,7 @@ jobs:
 
 ## Parameters
 
-All functions accept these common parameters:
+`restore`, `build`, `test`, `pack`, and `ci` accept these common parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
