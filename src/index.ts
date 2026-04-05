@@ -1,9 +1,23 @@
 /**
- * Reusable .NET CI/CD pipeline functions for Dagger
+ * Reusable CI/CD pipeline functions for Dagger
  *
- * Provides composable pipeline steps for .NET projects: restore, build, test,
- * pack, and NuGet publish. Each function can be called individually or chained
- * together via the `ci` function for a complete pipeline run.
+ * Multi-language module with composable pipeline steps for:
+ * - .NET: restore, build, test, pack, NuGet publish
+ * - Node.js: install, typecheck, lint, test, build (npm/pnpm/bun)
+ * - VS Code Extensions: build, package VSIX, publish to Marketplace
+ * - Next.js: lint, typecheck, build, static export
+ * - npm Packages: typecheck, test, pack, publish to npm
+ * - Cloudflare Workers: typecheck, deploy via wrangler
+ *
+ * Each sub-module can be accessed via its factory function:
+ *   dagger call node ci --source=.
+ *   dagger call vscode-extension ci --source=.
+ *   dagger call nextjs ci --source=.
+ *   dagger call npm-package ci --source=.
+ *   dagger call cloudflare-worker ci --source=.
+ *
+ * .NET functions remain on the root object for backward compatibility:
+ *   dagger call build --source=. --solution="MyLib.sln"
  */
 import {
   dag,
@@ -14,8 +28,63 @@ import {
   func,
 } from "@dagger.io/dagger"
 
+import { NodeCi } from "./node.js"
+import { VscodeExtension } from "./vscode-extension.js"
+import { Nextjs } from "./nextjs.js"
+import { NpmPackage } from "./npm-package.js"
+import { CloudflareWorker } from "./cloudflare-worker.js"
+
+export { NodeCi } from "./node.js"
+export { VscodeExtension } from "./vscode-extension.js"
+export { Nextjs } from "./nextjs.js"
+export { NpmPackage } from "./npm-package.js"
+export { CloudflareWorker } from "./cloudflare-worker.js"
+
 @object()
 export class DaggerPipelines {
+  // ── Sub-module accessors ────────────────────────────────────────────
+
+  /**
+   * Node.js CI pipeline (install, typecheck, lint, test, build)
+   */
+  @func()
+  node(): NodeCi {
+    return new NodeCi()
+  }
+
+  /**
+   * VS Code Extension pipeline (build, package VSIX, publish)
+   */
+  @func()
+  vscodeExtension(): VscodeExtension {
+    return new VscodeExtension()
+  }
+
+  /**
+   * Next.js pipeline (lint, typecheck, build, static export)
+   */
+  @func()
+  nextjs(): Nextjs {
+    return new Nextjs()
+  }
+
+  /**
+   * npm Package pipeline (typecheck, test, pack, publish)
+   */
+  @func()
+  npmPackage(): NpmPackage {
+    return new NpmPackage()
+  }
+
+  /**
+   * Cloudflare Worker pipeline (typecheck, deploy)
+   */
+  @func()
+  cloudflareWorker(): CloudflareWorker {
+    return new CloudflareWorker()
+  }
+
+  // ── .NET pipeline functions ─────────────────────────────────────────
   /**
    * Base .NET SDK container with source mounted and restored
    */
