@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <PackageId>TestLib</PackageId>
+        <Version>0.0.0</Version>
+        <Authors>Test</Authors>
+        <Description>Minimal fixture library for dagger-pipelines testing.</Description>
+        <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+        <IsPackable>true</IsPackable>
+    </PropertyGroup>
+
+</Project>

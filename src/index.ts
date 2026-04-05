@@ -185,4 +185,105 @@ export class DaggerPipelines {
 
     return container
   }
+
+  /**
+   * Full release pipeline: ci (build → test → pack) → publish to NuGet
+   *
+   * CLI-friendly function that combines ci + publish in one call.
+   * Use this from GitHub Actions or local CLI when you want to build, test,
+   * pack, and push to NuGet in a single command.
+   */
+  @func()
+  async release(
+    source: Directory,
+    solution: string,
+    projects: string,
+    nugetApiKey: Secret,
+    version: string = "1.0.0",
+    dotnetVersion: string = "8.0",
+    configuration: string = "Release",
+    testProject: string = "",
+    nugetSource: string = "https://api.nuget.org/v3/index.json",
+  ): Promise<string> {
+    const packed = await this.ci(
+      source,
+      solution,
+      projects,
+      version,
+      dotnetVersion,
+      configuration,
+      testProject,
+    )
+
+    return this.publish(packed, nugetApiKey, nugetSource)
+  }
+
+  // ── Test functions ──────────────────────────────────────────────────
+  // Run against the testdata/ fixture project to validate pipeline steps.
+  // Usage: dagger call test-restore, dagger call test-build, etc.
+
+  /**
+   * Verify NuGet restore succeeds against the test fixture
+   */
+  @func()
+  async testRestore(): Promise<string> {
+    const source = dag.currentModule().source().directory("testdata")
+    const container = this.restore(source, "TestProject.sln")
+    return container
+      .withExec(["dotnet", "restore", "TestProject.sln", "--verbosity", "minimal"])
+      .stdout()
+  }
+
+  /**
+   * Verify build succeeds against the test fixture
+   */
+  @func()
+  async testBuild(): Promise<string> {
+    const source = dag.currentModule().source().directory("testdata")
+    return this.build(source, "TestProject.sln")
+      .withExec(["sh", "-c", "echo BUILD_OK"])
+      .stdout()
+  }
+
+  /**
+   * Verify tests pass against the test fixture
+   */
+  @func()
+  async testTest(): Promise<string> {
+    const source = dag.currentModule().source().directory("testdata")
+    return this.test(source, "TestProject.sln")
+  }
+
+  /**
+   * Verify pack produces .nupkg files in /packages
+   */
+  @func()
+  async testPack(): Promise<string> {
+    const source = dag.currentModule().source().directory("testdata")
+    return this.pack(
+      source,
+      "TestProject.sln",
+      "src/TestLib/TestLib.csproj",
+      "0.0.0-test",
+    )
+      .withExec(["sh", "-c", "ls /packages/*.nupkg && echo PACK_OK"])
+      .stdout()
+  }
+
+  /**
+   * Verify the full CI pipeline (restore → build → test → pack) end-to-end
+   */
+  @func()
+  async testCi(): Promise<string> {
+    const source = dag.currentModule().source().directory("testdata")
+    const container = await this.ci(
+      source,
+      "TestProject.sln",
+      "src/TestLib/TestLib.csproj",
+      "0.0.0-test",
+    )
+    return container
+      .withExec(["sh", "-c", "ls /packages/*.nupkg && echo CI_OK"])
+      .stdout()
+  }
 }

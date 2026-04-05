@@ -2,10 +2,11 @@
 
 Reusable [Dagger](https://dagger.io) module for .NET CI/CD pipelines. Provides composable functions for restore, build, test, pack, and NuGet publish.
 
-## Prerequisites
+## Why
 
-- [Dagger CLI](https://docs.dagger.io/install) (v0.20+)
-- Docker running locally
+Every .NET library I maintain needs the same CI steps — restore, build, test, pack, maybe publish to NuGet. Each repo had its own GitHub Actions YAML with the same `dotnet` CLI calls copy-pasted and slightly tweaked. When I needed to change the .NET SDK version or add a step, I was updating the same logic in half a dozen workflows.
+
+This Dagger module extracts that pipeline into a single, composable, container-based definition that any repo can call. One module, consistent behavior everywhere, and it runs the same locally as it does in CI.
 
 ## Functions
 
@@ -20,7 +21,7 @@ Reusable [Dagger](https://dagger.io) module for .NET CI/CD pipelines. Provides c
 
 ## Usage
 
-### Run the full CI pipeline
+### 1. Run the full CI pipeline
 
 ```bash
 dagger call ci \
@@ -30,7 +31,7 @@ dagger call ci \
   --version="2.0.0"
 ```
 
-### Multi-package solution (e.g., PaginationKit)
+### 2. Multi-package solution (e.g., PaginationKit)
 
 ```bash
 dagger call ci \
@@ -41,7 +42,7 @@ dagger call ci \
   --dotnet-version="10.0"
 ```
 
-### Run individual steps
+### 3. Run individual steps
 
 ```bash
 # Just build
@@ -59,7 +60,7 @@ dagger call ci \
   publish --nuget-api-key=env:NUGET_API_KEY
 ```
 
-### Use from GitHub Actions
+### 4. Use from GitHub Actions
 
 ```yaml
 jobs:
@@ -97,6 +98,11 @@ jobs:
 - **`pack`**: `projects` — comma-separated .csproj paths to pack; `version` — package version
 - **`publish`**: `nuget-api-key` — NuGet.org API key (Dagger Secret); `nuget-source` — feed URL
 - **`ci`**: combines all of the above
+
+## Requirements
+
+- [Dagger CLI](https://docs.dagger.io/install) (v0.20+)
+- Docker running locally
 
 ## License
 
