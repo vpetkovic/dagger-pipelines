@@ -56,6 +56,7 @@ export class VscodeExtension {
     buildScript: string = "build",
   ): Container {
     return this.build(source, nodeVersion, buildScript)
+      .withExec(["mkdir", "-p", "/packages"])
       .withExec([
         "npx",
         "@vscode/vsce",
@@ -95,6 +96,7 @@ export class VscodeExtension {
     return this.install(source, nodeVersion)
       .withExec(["npx", "tsc", "--noEmit"])
       .withExec(["npm", "run", buildScript])
+      .withExec(["mkdir", "-p", "/packages"])
       .withExec(["npx", "@vscode/vsce", "package", "--out", "/packages/"])
   }
 
