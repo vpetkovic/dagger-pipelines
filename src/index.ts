@@ -33,12 +33,14 @@ import { VscodeExtension } from "./vscode-extension.js"
 import { Nextjs } from "./nextjs.js"
 import { NpmPackage } from "./npm-package.js"
 import { CloudflareWorker } from "./cloudflare-worker.js"
+import { Versioning } from "./versioning.js"
 
 export { NodeCi } from "./node.js"
 export { VscodeExtension } from "./vscode-extension.js"
 export { Nextjs } from "./nextjs.js"
 export { NpmPackage } from "./npm-package.js"
 export { CloudflareWorker } from "./cloudflare-worker.js"
+export { Versioning } from "./versioning.js"
 
 @object()
 export class DaggerPipelines {
@@ -82,6 +84,14 @@ export class DaggerPipelines {
   @func()
   cloudflareWorker(): CloudflareWorker {
     return new CloudflareWorker()
+  }
+
+  /**
+   * Version resolver (NerdBank-style semver from branch context)
+   */
+  @func()
+  versioning(): Versioning {
+    return new Versioning()
   }
 
   // ── .NET pipeline functions ─────────────────────────────────────────
@@ -354,5 +364,71 @@ export class DaggerPipelines {
     return container
       .withExec(["sh", "-c", "ls /packages/*.nupkg && echo CI_OK"])
       .stdout()
+  }
+
+  // ── Versioning test functions ───────────────────────────────────────
+
+  /**
+   * Verify PR version produces correct prerelease suffix
+   */
+  @func()
+  testVersionPr(): string {
+    const v = this.versioning()
+    const withPr = v.resolve("1.2.0", "pull/47/merge", "156", "pr", "47")
+    const withoutPr = v.resolve("1.2.0", "main", "156", "pr", "")
+    const autoExtract = v.resolve("1.2.0", "pull/47/merge", "156")
+    const expected1 = "1.2.0-pr.47.156"
+    const expected2 = "1.2.0-ci.156"
+    const expected3 = "1.2.0-pr.47.156"
+    if (withPr !== expected1) {
+      throw new Error(`PR version: expected ${expected1}, got ${withPr}`)
+    }
+    if (withoutPr !== expected2) {
+      throw new Error(`CI version: expected ${expected2}, got ${withoutPr}`)
+    }
+    if (autoExtract !== expected3) {
+      throw new Error(`Auto-extract PR: expected ${expected3}, got ${autoExtract}`)
+    }
+    return `PR_OK: ${withPr} | ${withoutPr} | auto=${autoExtract}`
+  }
+
+  /**
+   * Verify dev/stage branches produce correct prerelease suffixes
+   */
+  @func()
+  testVersionDev(): string {
+    const v = this.versioning()
+    const dev = v.resolve("2.0.0", "dev", "42")
+    const develop = v.resolve("2.0.0", "develop", "42")
+    const stage = v.resolve("2.0.0", "stage", "10")
+    const staging = v.resolve("2.0.0", "staging", "10")
+    const feature = v.resolve("2.0.0", "feature/my-thing", "5")
+
+    if (dev !== "2.0.0-dev.42") throw new Error(`dev: expected 2.0.0-dev.42, got ${dev}`)
+    if (develop !== "2.0.0-dev.42") throw new Error(`develop: expected 2.0.0-dev.42, got ${develop}`)
+    if (stage !== "2.0.0-rc.10") throw new Error(`stage: expected 2.0.0-rc.10, got ${stage}`)
+    if (staging !== "2.0.0-rc.10") throw new Error(`staging: expected 2.0.0-rc.10, got ${staging}`)
+    if (feature !== "2.0.0-dev.5") throw new Error(`feature: expected 2.0.0-dev.5, got ${feature}`)
+
+    return `DEV_OK: dev=${dev} | develop=${develop} | stage=${stage} | staging=${staging} | feature=${feature}`
+  }
+
+  /**
+   * Verify main/master/tag produce clean versions
+   */
+  @func()
+  testVersionRelease(): string {
+    const v = this.versioning()
+    const main = v.resolve("3.1.0", "main", "0")
+    const master = v.resolve("3.1.0", "master", "0")
+    const vPrefix = v.resolve("v3.1.0", "main", "0")
+    const zeroHeight = v.resolve("3.1.0", "feature/x", "0")
+
+    if (main !== "3.1.0") throw new Error(`main: expected 3.1.0, got ${main}`)
+    if (master !== "3.1.0") throw new Error(`master: expected 3.1.0, got ${master}`)
+    if (vPrefix !== "3.1.0") throw new Error(`v-prefix: expected 3.1.0, got ${vPrefix}`)
+    if (zeroHeight !== "3.1.0") throw new Error(`zero-height: expected 3.1.0, got ${zeroHeight}`)
+
+    return `RELEASE_OK: main=${main} | master=${master} | v-prefix=${vPrefix} | zero-height=${zeroHeight}`
   }
 }

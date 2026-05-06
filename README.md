@@ -18,6 +18,7 @@ This Dagger module extracts those pipelines into composable, container-based def
 | **Next.js** | `dagger call nextjs [fn]` | lint, typecheck, build, static export |
 | **npm Package** | `dagger call npm-package [fn]` | typecheck, test, pack, publish to npm |
 | **Cloudflare Worker** | `dagger call cloudflare-worker [fn]` | typecheck, deploy via wrangler |
+| **Versioning** | `dagger call versioning [fn]` | NerdBank-style semver from branch context |
 
 ---
 
@@ -311,6 +312,69 @@ dagger call cloudflare-worker deploy \
 
 ---
 
+## Versioning
+
+Style semver resolution driven by branch context. Git tags are the source of truth — no `version.json` needed. Pass git info from your CI environment and get the correct prerelease suffix.
+
+### Version Matrix
+
+| Context | Branch | Output |
+|---------|--------|--------|
+| PR #47 | `pull/47/merge` | `1.2.0-pr.47.156` |
+| PR (no number) | any | `1.2.0-ci.156` |
+| Push | `dev` / `develop` | `1.2.0-dev.156` |
+| Push | `stage` / `staging` | `1.2.0-rc.156` |
+| Push / tag | `main` / `master` | `1.2.0` |
+| Feature branch | `feature/x` (height > 0) | `1.2.0-dev.5` |
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `resolve` | Compute version string from base version + branch context |
+
+### Usage
+
+```bash
+# Resolve a dev version
+dagger call versioning resolve \
+  --base-version=1.2.0 \
+  --branch=dev \
+  --height=42
+# → 1.2.0-dev.42
+
+# PR build (auto-extracts PR number from branch name)
+dagger call versioning resolve \
+  --base-version=1.2.0 \
+  --branch="pull/47/merge" \
+  --height=156
+# → 1.2.0-pr.47.156
+
+# Release (clean version)
+dagger call versioning resolve \
+  --base-version=1.2.0 \
+  --branch=main
+# → 1.2.0
+
+# Strips v prefix automatically
+dagger call versioning resolve \
+  --base-version=v1.2.0 \
+  --branch=main
+# → 1.2.0
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `base-version` | — | Base semver (from git tag, e.g., `1.2.0` or `v1.2.0`) |
+| `branch` | `main` | Branch name (`GITHUB_REF_NAME` or git branch) |
+| `height` | `0` | Commit count since last tag |
+| `context` | — | Set to `pr` for pull request builds |
+| `pr-number` | — | PR number (auto-extracted from `pull/N/...` branch if omitted) |
+
+---
+
 ## GitHub Actions
 
 ### .NET CI
@@ -414,6 +478,55 @@ jobs:
             --cf-account-id="${{ vars.CF_ACCOUNT_ID }}"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+```
+
+### .NET CI with Versioning
+
+Dagger can't access `.git` history from source mounts, so version resolution uses a small shell step to extract git info, then passes it to `versioning resolve`. GitHub Actions already provides branch, event type, and PR number — you just need the tag and height.
+
+```yaml
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Git version info
+        id: git
+        run: |
+          DESC=$(git describe --tags --long --match "v*" 2>/dev/null || echo "v0.1.0-0-g$(git rev-parse --short HEAD)")
+          echo "BASE=$(echo $DESC | sed -E 's/^v(.+)-[0-9]+-g.+$/\1/')" >> $GITHUB_OUTPUT
+          echo "HEIGHT=$(echo $DESC | sed -E 's/^v.+-([0-9]+)-g.+$/\1/')" >> $GITHUB_OUTPUT
+
+      - name: Resolve version
+        id: ver
+        uses: dagger/dagger-for-github@v7
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/vpetkovic/dagger-pipelines
+          args: >-
+            versioning resolve
+            --base-version=${{ steps.git.outputs.BASE }}
+            --branch=${{ github.ref_name }}
+            --height=${{ steps.git.outputs.HEIGHT }}
+            --context=${{ github.event_name == 'pull_request' && 'pr' || '' }}
+            --pr-number=${{ github.event.pull_request.number || '' }}
+
+      - name: CI
+        uses: dagger/dagger-for-github@v7
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/vpetkovic/dagger-pipelines
+          args: >-
+            ci
+            --source=.
+            --solution="MyLib.sln"
+            --projects="src/MyLib/MyLib.csproj"
+            --version="${{ steps.ver.outputs.stdout }}"
 ```
 
 ## Requirements
