@@ -314,7 +314,7 @@ dagger call cloudflare-worker deploy \
 
 ## Versioning
 
-Style semver resolution driven by branch context. Git tags are the source of truth — no `version.json` needed. Pass git info from your CI environment and get the correct prerelease suffix.
+Style semver resolution driven by branch context. Git tags are the source of truth. Pass git info from your CI environment and get the correct prerelease suffix.
 
 ### Version Matrix
 
