@@ -19,6 +19,13 @@ This Dagger module extracts those pipelines into composable, container-based def
 | **npm Package** | `dagger call npm-package [fn]` | typecheck, test, pack, publish to npm |
 | **Cloudflare Worker** | `dagger call cloudflare-worker [fn]` | typecheck, deploy via wrangler |
 | **Versioning** | `dagger call versioning [fn]` | NerdBank-style semver from branch context |
+| **Node Audit** | `dagger call node-audit [fn]` | Node.js dependency vulnerability checks |
+| **.NET Audit** | `dagger call dotnet-audit [fn]` | .NET dependency vulnerability checks |
+| **GitHub Release** | `dagger call github-release [fn]` | Create GitHub releases with artifact uploads |
+| **Docker** | `dagger call docker [fn]` | Build from Dockerfile, push to any OCI registry |
+| **Preview Deploy** | `dagger call preview-deploy [fn]` | PR preview deployments to Cloudflare Pages |
+| **DB Migrations** | `dagger call dotnet-migrations [fn]` | EF Core migration validation |
+| **Changelog** | `dagger call changelog [fn]` | Conventional commit changelog generation |
 
 ---
 
@@ -312,6 +319,330 @@ dagger call cloudflare-worker deploy \
 
 ---
 
+## Node Audit
+
+Node.js dependency vulnerability checks. Uses the native audit command for the chosen package manager. Only mounts source and runs audit — skips full dependency install since audit commands work from the lockfile alone.
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `audit` | Run dependency audit (npm/pnpm/bun) |
+
+### Usage
+
+```bash
+# npm audit
+dagger call node-audit audit --source=.
+
+# pnpm audit
+dagger call node-audit audit --source=. --package-manager=pnpm
+
+# bun audit
+dagger call node-audit audit --source=. --package-manager=bun
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `source` | — | Project source directory |
+| `node-version` | `20` | Node.js version tag |
+| `package-manager` | `npm` | `npm`, `pnpm`, or `bun` |
+
+---
+
+## .NET Audit
+
+.NET dependency vulnerability checks. Lists vulnerable NuGet packages across a solution, including transitive dependencies.
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `audit` | Run `dotnet list package --vulnerable` |
+
+### Usage
+
+```bash
+# Audit a solution
+dagger call dotnet-audit audit \
+  --source=. \
+  --solution="MyLib.sln"
+
+# With .NET 10
+dagger call dotnet-audit audit \
+  --source=. \
+  --solution="MyLib.sln" \
+  --dotnet-version="10.0"
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `source` | — | Project source directory |
+| `solution` | — | .NET solution file |
+| `dotnet-version` | `8.0` | .NET SDK version tag |
+
+---
+
+## GitHub Release
+
+Create GitHub releases with optional artifact uploads via the `gh` CLI.
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `create` | Create a release with optional artifacts |
+
+### Usage
+
+```bash
+# Simple release
+dagger call github-release create \
+  --tag="v1.0.0" \
+  --repo="user/my-repo" \
+  --gh-token=env:GH_TOKEN
+
+# Release with title and notes
+dagger call github-release create \
+  --tag="v1.0.0" \
+  --repo="user/my-repo" \
+  --gh-token=env:GH_TOKEN \
+  --title="Release 1.0.0" \
+  --notes="First stable release"
+
+# Draft prerelease with artifacts
+dagger call github-release create \
+  --tag="v1.0.0-rc.1" \
+  --repo="user/my-repo" \
+  --gh-token=env:GH_TOKEN \
+  --draft \
+  --prerelease \
+  --artifacts=./packages
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `tag` | — | Git tag for the release (e.g., `v1.0.0`) |
+| `repo` | — | GitHub repository (`owner/repo`) |
+| `gh-token` | — | GitHub token (Secret) |
+| `title` | — | Release title (defaults to tag) |
+| `notes` | — | Release notes body |
+| `draft` | `false` | Create as draft release |
+| `prerelease` | `false` | Mark as prerelease |
+| `artifacts` | — | Directory of files to upload as release assets |
+
+---
+
+## Docker
+
+Build container images from Dockerfiles and push to any OCI-compatible registry. Uses Dagger's native container building APIs — no docker CLI needed on the host.
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `build` | Build a container image from a Dockerfile |
+| `push` | Push a built container to a registry |
+| `ci` | Build and return the container |
+| `release` | Build and push to registry |
+
+### Usage
+
+```bash
+# Build from Dockerfile
+dagger call docker build --source=.
+
+# Build with custom Dockerfile
+dagger call docker build --source=. --dockerfile="docker/Dockerfile.prod"
+
+# Build with target stage
+dagger call docker build --source=. --target="runtime"
+
+# Build with build args
+dagger call docker build --source=. --build-args="NODE_ENV=production,VERSION=1.0"
+
+# Build and push to GHCR
+dagger call docker release \
+  --source=. \
+  --address="ghcr.io/user/my-app:latest" \
+  --registry-username="user" \
+  --registry-password=env:GHCR_TOKEN
+
+# Build and push to Docker Hub
+dagger call docker release \
+  --source=. \
+  --address="user/my-app:1.0.0" \
+  --registry-username="user" \
+  --registry-password=env:DOCKER_TOKEN
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `source` | — | Build context directory |
+| `dockerfile` | `Dockerfile` | Path to Dockerfile within source |
+| `target` | — | Multi-stage build target |
+| `build-args` | — | Comma-separated build args (`KEY=VALUE,KEY2=VALUE2`) |
+| `address` | — | Registry address with tag (e.g., `ghcr.io/user/app:latest`) |
+| `registry-username` | — | Registry username for authentication |
+| `registry-password` | — | Registry password/token (Secret) |
+
+---
+
+## Preview Deploy
+
+Deploy built sites to Cloudflare Pages for PR preview URLs.
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `deploy` | Deploy a directory to Cloudflare Pages |
+
+### Usage
+
+```bash
+# Deploy to Cloudflare Pages
+dagger call preview-deploy deploy \
+  --source=./out \
+  --project-name="my-site" \
+  --cf-api-token=env:CLOUDFLARE_API_TOKEN \
+  --cf-account-id="your-account-id"
+
+# Deploy with branch name (for PR previews)
+dagger call preview-deploy deploy \
+  --source=./out \
+  --project-name="my-site" \
+  --cf-api-token=env:CLOUDFLARE_API_TOKEN \
+  --cf-account-id="your-account-id" \
+  --branch="pr-42"
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `source` | — | Built site output directory to deploy |
+| `project-name` | — | Cloudflare Pages project name |
+| `cf-api-token` | — | Cloudflare API token (Secret) |
+| `cf-account-id` | — | Cloudflare account ID |
+| `branch` | — | Branch name (Cloudflare uses this for preview URLs) |
+| `node-version` | `20` | Node.js version for wrangler |
+
+---
+
+## DB Migrations
+
+EF Core migration validation pipeline. Catches broken migrations before they hit production by generating the full SQL migration script — if any migration has compilation errors, missing dependencies, or invalid SQL, the command fails.
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `validate` | Generate SQL script to verify all migrations compile |
+| `list` | List all migrations in the project |
+
+### Usage
+
+```bash
+# Validate migrations
+dagger call dotnet-migrations validate \
+  --source=. \
+  --project="src/MyApp/MyApp.csproj"
+
+# Validate with startup project (for class library DbContexts)
+dagger call dotnet-migrations validate \
+  --source=. \
+  --project="src/MyApp.Data/MyApp.Data.csproj" \
+  --startup-project="src/MyApp.Api/MyApp.Api.csproj"
+
+# Validate specific DbContext
+dagger call dotnet-migrations validate \
+  --source=. \
+  --project="src/MyApp/MyApp.csproj" \
+  --db-context="AppDbContext"
+
+# List all migrations
+dagger call dotnet-migrations list \
+  --source=. \
+  --project="src/MyApp/MyApp.csproj"
+
+# With .NET 10
+dagger call dotnet-migrations validate \
+  --source=. \
+  --project="src/MyApp/MyApp.csproj" \
+  --dotnet-version="10.0"
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `source` | — | Project source directory |
+| `project` | — | Path to .csproj containing the DbContext |
+| `dotnet-version` | `8.0` | .NET SDK version tag |
+| `startup-project` | — | Startup project (if DbContext is in a class library) |
+| `db-context` | — | Specific DbContext class name (if multiple) |
+
+---
+
+## Changelog
+
+Generate a categorized markdown changelog from conventional commit messages. Takes raw git log output as input — same pattern as the Versioning module since Dagger containers don't have `.git` access.
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `generate` | Parse conventional commits into markdown changelog |
+
+### Usage
+
+```bash
+# Generate changelog from git log
+COMMITS=$(git log v1.0.0..HEAD --oneline --no-decorate)
+dagger call changelog generate \
+  --commits="$COMMITS" \
+  --version="1.1.0" \
+  --date="2026-05-07"
+
+# Unreleased changes
+COMMITS=$(git log v1.0.0..HEAD --oneline --no-decorate)
+dagger call changelog generate --commits="$COMMITS"
+```
+
+### Supported Conventional Commit Types
+
+| Type | Category |
+|------|----------|
+| `feat` | Features |
+| `fix` | Bug Fixes |
+| `docs` | Documentation |
+| `style` | Styles |
+| `refactor` | Refactoring |
+| `perf` | Performance |
+| `test` | Tests |
+| `build` | Build |
+| `ci` | CI/CD |
+| `chore` | Chores |
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `commits` | — | Raw commit messages (one per line, from `git log --oneline`) |
+| `version` | `Unreleased` | Version header for the changelog |
+| `date` | — | Release date (e.g., `2026-05-07`) |
+
+---
+
 ## Versioning
 
 Style semver resolution driven by branch context. Git tags are the source of truth. Pass git info from your CI environment and get the correct prerelease suffix.
@@ -478,6 +809,134 @@ jobs:
             --cf-account-id="${{ vars.CF_ACCOUNT_ID }}"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+```
+
+### Node Audit
+
+```yaml
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dagger/dagger-for-github@v7
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/vpetkovic/dagger-pipelines
+          args: >-
+            node-audit audit
+            --source=.
+```
+
+### .NET Audit
+
+```yaml
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dagger/dagger-for-github@v7
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/vpetkovic/dagger-pipelines
+          args: >-
+            dotnet-audit audit
+            --source=.
+            --solution="MyLib.sln"
+```
+
+### GitHub Release (after CI)
+
+```yaml
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dagger/dagger-for-github@v7
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/vpetkovic/dagger-pipelines
+          args: >-
+            github-release create
+            --tag="${{ github.ref_name }}"
+            --repo="${{ github.repository }}"
+            --gh-token=env:GH_TOKEN
+            --title="Release ${{ github.ref_name }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### Docker Build + Push
+
+```yaml
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dagger/dagger-for-github@v7
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/vpetkovic/dagger-pipelines
+          args: >-
+            docker release
+            --source=.
+            --address="ghcr.io/${{ github.repository }}:${{ github.sha }}"
+            --registry-username="${{ github.actor }}"
+            --registry-password=env:GHCR_TOKEN
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### PR Preview Deploy
+
+```yaml
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dagger/dagger-for-github@v7
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/vpetkovic/dagger-pipelines
+          args: >-
+            preview-deploy deploy
+            --source=./out
+            --project-name="my-site"
+            --cf-api-token=env:CLOUDFLARE_API_TOKEN
+            --cf-account-id="${{ vars.CF_ACCOUNT_ID }}"
+            --branch="pr-${{ github.event.pull_request.number }}"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+```
+
+### DB Migration Check
+
+```yaml
+jobs:
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dagger/dagger-for-github@v7
+        with:
+          version: "latest"
+          verb: call
+          module: github.com/vpetkovic/dagger-pipelines
+          args: >-
+            dotnet-migrations validate
+            --source=.
+            --project="src/MyApp/MyApp.csproj"
+            --dotnet-version="10.0"
 ```
 
 ### .NET CI with Versioning
