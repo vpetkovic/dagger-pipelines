@@ -70,3 +70,31 @@ jobs:
           verb: call
           version: "0.20.3"
           args: test-version-release
+
+      - name: Test changelog generation
+        uses: dagger/dagger-for-github@v7
+        with:
+          verb: call
+          version: "0.20.3"
+          args: test-changelog
+
+      - name: Test .NET audit
+        uses: dagger/dagger-for-github@v7
+        with:
+          verb: call
+          version: "0.20.3"
+          args: test-dotnet-audit
+
+      - name: Test Node.js audit
+        uses: dagger/dagger-for-github@v7
+        with:
+          verb: call
+          version: "0.20.3"
+          args: test-node-audit
+
+      - name: Test Docker build
+        uses: dagger/dagger-for-github@v7
+        with:
+          verb: call
+          version: "0.20.3"
+          args: test-docker-build

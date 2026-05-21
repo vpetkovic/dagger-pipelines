@@ -8,6 +8,13 @@
  * - Next.js: lint, typecheck, build, static export
  * - npm Packages: typecheck, test, pack, publish to npm
  * - Cloudflare Workers: typecheck, deploy via wrangler
+ * - Node Audit: Node.js dependency vulnerability checks
+ * - .NET Audit: .NET dependency vulnerability checks
+ * - GitHub Release: create releases with artifact uploads
+ * - Docker: build from Dockerfile, push to any OCI registry
+ * - Preview Deploy: PR preview deployments to Cloudflare Pages
+ * - DB Migrations: EF Core migration validation
+ * - Changelog: conventional commit parsing to markdown
  *
  * Each sub-module can be accessed via its factory function:
  *   dagger call node ci --source=.
@@ -15,6 +22,13 @@
  *   dagger call nextjs ci --source=.
  *   dagger call npm-package ci --source=.
  *   dagger call cloudflare-worker ci --source=.
+ *   dagger call node-audit audit --source=.
+ *   dagger call dotnet-audit audit --source=. --solution="MyLib.sln"
+ *   dagger call github-release create --tag=v1.0.0 --repo=user/repo
+ *   dagger call docker ci --source=.
+ *   dagger call preview-deploy deploy --source=./out --project-name=my-site
+ *   dagger call dotnet-migrations validate --source=. --project=src/MyApp
+ *   dagger call changelog generate --commits="feat: ..."
  *
  * .NET functions remain on the root object for backward compatibility:
  *   dagger call build --source=. --solution="MyLib.sln"
@@ -34,6 +48,13 @@ import { Nextjs } from "./nextjs.js"
 import { NpmPackage } from "./npm-package.js"
 import { CloudflareWorker } from "./cloudflare-worker.js"
 import { Versioning } from "./versioning.js"
+import { NodeAudit } from "./node-audit.js"
+import { DotnetAudit } from "./dotnet-audit.js"
+import { GithubRelease } from "./github-release.js"
+import { Docker } from "./docker.js"
+import { PreviewDeploy } from "./preview-deploy.js"
+import { DotnetMigrations } from "./dotnet-migrations.js"
+import { Changelog } from "./changelog.js"
 
 export { NodeCi } from "./node.js"
 export { VscodeExtension } from "./vscode-extension.js"
@@ -41,6 +62,13 @@ export { Nextjs } from "./nextjs.js"
 export { NpmPackage } from "./npm-package.js"
 export { CloudflareWorker } from "./cloudflare-worker.js"
 export { Versioning } from "./versioning.js"
+export { NodeAudit } from "./node-audit.js"
+export { DotnetAudit } from "./dotnet-audit.js"
+export { GithubRelease } from "./github-release.js"
+export { Docker } from "./docker.js"
+export { PreviewDeploy } from "./preview-deploy.js"
+export { DotnetMigrations } from "./dotnet-migrations.js"
+export { Changelog } from "./changelog.js"
 
 @object()
 export class DaggerPipelines {
@@ -92,6 +120,62 @@ export class DaggerPipelines {
   @func()
   versioning(): Versioning {
     return new Versioning()
+  }
+
+  /**
+   * Node.js dependency audit pipeline
+   */
+  @func()
+  nodeAudit(): NodeAudit {
+    return new NodeAudit()
+  }
+
+  /**
+   * .NET dependency audit pipeline
+   */
+  @func()
+  dotnetAudit(): DotnetAudit {
+    return new DotnetAudit()
+  }
+
+  /**
+   * GitHub Release pipeline (create releases with artifact uploads)
+   */
+  @func()
+  githubRelease(): GithubRelease {
+    return new GithubRelease()
+  }
+
+  /**
+   * Docker build and push pipeline (Dockerfile → registry)
+   */
+  @func()
+  docker(): Docker {
+    return new Docker()
+  }
+
+  /**
+   * PR preview deploy pipeline (Cloudflare Pages)
+   */
+  @func()
+  previewDeploy(): PreviewDeploy {
+    return new PreviewDeploy()
+  }
+
+  /**
+   * EF Core migration validation pipeline
+   */
+  @func()
+  dotnetMigrations(): DotnetMigrations {
+    return new DotnetMigrations()
+  }
+
+  /**
+   * Changelog generation from conventional commits
+   */
+  @func()
+  changelog(): Changelog {
+    return new Changelog()
   }
 
   // ── .NET pipeline functions ─────────────────────────────────────────
@@ -430,5 +514,77 @@ export class DaggerPipelines {
     if (zeroHeight !== "3.1.0") throw new Error(`zero-height: expected 3.1.0, got ${zeroHeight}`)
 
     return `RELEASE_OK: main=${main} | master=${master} | v-prefix=${vPrefix} | zero-height=${zeroHeight}`
+  }
+
+  // ── New module test functions ───────────────────────────────────────
+
+  /**
+   * Verify changelog generates correct markdown from conventional commits
+   */
+  @func()
+  testChangelog(): string {
+    const c = this.changelog()
+    const commits = [
+      "abc1234 feat: add user authentication",
+      "def5678 fix: resolve login redirect loop",
+      "aaa9012 docs: update API reference",
+      "bbb3456 feat(auth): add OAuth2 support",
+      "ccc7890 chore: bump dependencies",
+    ].join("\n")
+
+    const result = c.generate(commits, "1.0.0", "2026-05-07")
+
+    if (!result.includes("## 1.0.0 (2026-05-07)")) {
+      throw new Error(`Missing version header, got: ${result.substring(0, 100)}`)
+    }
+    if (!result.includes("### Features")) {
+      throw new Error("Missing Features section")
+    }
+    if (!result.includes("### Bug Fixes")) {
+      throw new Error("Missing Bug Fixes section")
+    }
+    if (!result.includes("### Documentation")) {
+      throw new Error("Missing Documentation section")
+    }
+    if (!result.includes("**auth:** add OAuth2 support")) {
+      throw new Error("Missing scoped feat entry")
+    }
+    if (!result.includes("### Chores")) {
+      throw new Error("Missing Chores section")
+    }
+
+    return `CHANGELOG_OK: ${result.split("\n").length} lines generated`
+  }
+
+  /**
+   * Verify .NET audit runs against the test fixture
+   */
+  @func()
+  async testDotnetAudit(): Promise<string> {
+    const source = dag.currentModule().source().directory("testdata")
+    const result = await this.dotnetAudit().audit(source, "TestProject.sln")
+    return `DOTNET_AUDIT_OK: ${result.length} chars output`
+  }
+
+  /**
+   * Verify Node.js audit runs against a minimal fixture
+   */
+  @func()
+  async testNodeAudit(): Promise<string> {
+    const source = dag.currentModule().source().directory("testdata/node")
+    const result = await this.nodeAudit().audit(source)
+    return `NODE_AUDIT_OK: ${result.length} chars output`
+  }
+
+  /**
+   * Verify Docker build from a Dockerfile in testdata
+   */
+  @func()
+  async testDockerBuild(): Promise<string> {
+    const source = dag.currentModule().source().directory("testdata")
+    const container = this.docker().build(source)
+    return container
+      .withExec(["cat", "/build-marker.txt"])
+      .stdout()
   }
 }
