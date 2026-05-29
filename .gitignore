@@ -2,3 +2,5 @@
 /**/node_modules/**
 /**/.pnpm-store/**
 /.env
+[Bb]in/
+[Oo]bj/
