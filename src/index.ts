@@ -43,6 +43,7 @@ import {
 } from "@dagger.io/dagger"
 
 import { NodeCi } from "./node.js"
+import { Frontend } from "./frontend.js"
 import { VscodeExtension } from "./vscode-extension.js"
 import { Nextjs } from "./nextjs.js"
 import { NpmPackage } from "./npm-package.js"
@@ -57,6 +58,7 @@ import { DotnetMigrations } from "./dotnet-migrations.js"
 import { Changelog } from "./changelog.js"
 
 export { NodeCi } from "./node.js"
+export { Frontend } from "./frontend.js"
 export { VscodeExtension } from "./vscode-extension.js"
 export { Nextjs } from "./nextjs.js"
 export { NpmPackage } from "./npm-package.js"
@@ -80,6 +82,14 @@ export class DaggerPipelines {
   @func()
   node(): NodeCi {
     return new NodeCi()
+  }
+
+  /**
+   * Frontend monorepo CI pipeline (Turborepo + pnpm: typecheck, test, build, export)
+   */
+  @func()
+  frontend(): Frontend {
+    return new Frontend()
   }
 
   /**

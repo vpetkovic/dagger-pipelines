@@ -20,6 +20,9 @@ export class PreviewDeploy {
    * Deploys the given output directory to a Cloudflare Pages project.
    * Returns the preview URL. For PR builds, Cloudflare auto-generates
    * a unique preview URL per deployment.
+   *
+   * Set `commitDirty` to deploy without a clean git tree (the built output
+   * directory is mounted standalone, so wrangler otherwise treats it as dirty).
    */
   @func()
   async deploy(
@@ -29,6 +32,7 @@ export class PreviewDeploy {
     cfAccountId: string,
     branch: string = "",
     nodeVersion: string = "20",
+    commitDirty: boolean = false,
   ): Promise<string> {
     const args = [
       "npx", "wrangler", "pages", "deploy", ".",
@@ -37,6 +41,10 @@ export class PreviewDeploy {
 
     if (branch) {
       args.push("--branch", branch)
+    }
+
+    if (commitDirty) {
+      args.push("--commit-dirty=true")
     }
 
     return dag
