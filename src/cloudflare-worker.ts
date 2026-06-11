@@ -86,9 +86,11 @@ export class CloudflareWorker {
   /**
    * Execute a SQL file against a Cloudflare D1 database via wrangler.
    * Generic — usable by any project with a D1 binding (migrations, seeds, syncs).
+   * Named without a digit so the generated CLI command is unambiguous
+   * (`execute-sql`).
    */
   @func()
-  async d1Execute(
+  async executeSql(
     source: Directory,
     cfApiToken: Secret,
     cfAccountId: string,
