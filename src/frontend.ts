@@ -108,4 +108,26 @@ export class Frontend {
   ): Directory {
     return this.build(source, nodeVersion).directory(`/app/${outputPath}`)
   }
+
+  /**
+   * Write a runtime config document into a built artifact directory.
+   *
+   * Environment-specific public values (e.g. a Clerk publishable key, API base
+   * URL) are served per environment at runtime instead of inlined at build
+   * time, so the same artifact can be promoted across environments
+   * ("build once, promote"). This writes `configJson` to `<configPath>` inside
+   * the directory and returns the augmented directory, ready for a
+   * host-specific deploy step (e.g. `cloudflare-pages deploy`).
+   *
+   * Platform-neutral on purpose: the config schema lives with the caller, not
+   * here, so this is reusable for any static host.
+   */
+  @func()
+  writeRuntimeConfig(
+    dir: Directory,
+    configJson: string,
+    configPath: string = "config.json",
+  ): Directory {
+    return dir.withNewFile(configPath, configJson)
+  }
 }

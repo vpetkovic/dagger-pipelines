@@ -12,7 +12,8 @@
  * - .NET Audit: .NET dependency vulnerability checks
  * - GitHub Release: create releases with artifact uploads
  * - Docker: build from Dockerfile, push to any OCI registry
- * - Preview Deploy: PR preview deployments to Cloudflare Pages
+ * - Cloudflare Pages: deploy a static artifact to Pages (env-by-branch)
+ * - Preview Deploy: PR preview deployments to Cloudflare Pages (deprecated → use Cloudflare Pages)
  * - DB Migrations: EF Core migration validation
  * - Changelog: conventional commit parsing to markdown
  *
@@ -26,7 +27,9 @@
  *   dagger call dotnet-audit audit --source=. --solution="MyLib.sln"
  *   dagger call github-release create --tag=v1.0.0 --repo=user/repo
  *   dagger call docker ci --source=.
- *   dagger call preview-deploy deploy --source=./out --project-name=my-site
+ *   dagger call frontend write-runtime-config --dir=./out --config-json='{"k":"v"}'
+ *   dagger call cloudflare-pages deploy --source=./out --project-name=my-site --branch=staging
+ *   dagger call preview-deploy deploy --source=./out --project-name=my-site  # deprecated
  *   dagger call dotnet-migrations validate --source=. --project=src/MyApp
  *   dagger call changelog generate --commits="feat: ..."
  *
@@ -54,6 +57,7 @@ import { DotnetAudit } from "./dotnet-audit.js"
 import { GithubRelease } from "./github-release.js"
 import { Docker } from "./docker.js"
 import { PreviewDeploy } from "./preview-deploy.js"
+import { CloudflarePages } from "./cloudflare-pages.js"
 import { DotnetMigrations } from "./dotnet-migrations.js"
 import { Changelog } from "./changelog.js"
 
@@ -69,6 +73,7 @@ export { DotnetAudit } from "./dotnet-audit.js"
 export { GithubRelease } from "./github-release.js"
 export { Docker } from "./docker.js"
 export { PreviewDeploy } from "./preview-deploy.js"
+export { CloudflarePages } from "./cloudflare-pages.js"
 export { DotnetMigrations } from "./dotnet-migrations.js"
 export { Changelog } from "./changelog.js"
 
@@ -166,10 +171,22 @@ export class DaggerPipelines {
 
   /**
    * PR preview deploy pipeline (Cloudflare Pages)
+   *
+   * @deprecated Use `cloudflarePages` instead — the Cloudflare-specific deploy
+   * now lives in the explicitly named `cloudflare-pages` module. Retained for
+   * back-compat with existing callers until they migrate.
    */
   @func()
   previewDeploy(): PreviewDeploy {
     return new PreviewDeploy()
+  }
+
+  /**
+   * Cloudflare Pages deploy pipeline (static artifact → Pages, env-by-branch)
+   */
+  @func()
+  cloudflarePages(): CloudflarePages {
+    return new CloudflarePages()
   }
 
   /**
@@ -596,5 +613,33 @@ export class DaggerPipelines {
     return container
       .withExec(["cat", "/build-marker.txt"])
       .stdout()
+  }
+
+  /**
+   * Verify the generic runtime-config writer injects config.json into an
+   * artifact directory without disturbing the existing files.
+   */
+  @func()
+  async testWriteRuntimeConfig(): Promise<string> {
+    const dir = dag
+      .directory()
+      .withNewFile("index.html", "<!doctype html><html></html>")
+
+    const configJson =
+      '{"clerkPublishableKey":"pk_test_x","apiBaseUrl":"https://api.example.com"}'
+
+    const out = this.frontend().writeRuntimeConfig(dir, configJson)
+
+    const written = await out.file("config.json").contents()
+    if (written !== configJson) {
+      throw new Error(`config.json mismatch: got ${written}`)
+    }
+
+    const html = await out.file("index.html").contents()
+    if (!html.includes("<html>")) {
+      throw new Error("existing artifact file was lost")
+    }
+
+    return `WRITE_CONFIG_OK: ${written.length} chars written, index.html preserved`
   }
 }

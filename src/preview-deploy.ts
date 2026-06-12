@@ -3,6 +3,10 @@
  *
  * Deploys a built site to Cloudflare Pages for PR preview URLs.
  * Basic implementation — deploy a directory to a Cloudflare Pages project.
+ *
+ * @deprecated This Cloudflare-specific deploy has moved to the explicitly named
+ * `cloudflare-pages` module (`CloudflarePages`). Retained for back-compat with
+ * existing callers; new callers should use `cloudflare-pages deploy`.
  */
 import {
   dag,
