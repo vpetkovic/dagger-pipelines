@@ -16,6 +16,7 @@
  * - Preview Deploy: PR preview deployments to Cloudflare Pages (deprecated → use Cloudflare Pages)
  * - DB Migrations: EF Core migration validation
  * - Changelog: conventional commit parsing to markdown
+ * - Postgres: ephemeral Postgres service for integration tests
  *
  * Each sub-module can be accessed via its factory function:
  *   dagger call node ci --source=.
@@ -32,6 +33,7 @@
  *   dagger call preview-deploy deploy --source=./out --project-name=my-site  # deprecated
  *   dagger call dotnet-migrations validate --source=. --project=src/MyApp
  *   dagger call changelog generate --commits="feat: ..."
+ *   dagger call postgres service --db-name=mydb
  *
  * .NET functions remain on the root object for backward compatibility:
  *   dagger call build --source=. --solution="MyLib.sln"
@@ -41,6 +43,7 @@ import {
   Container,
   Directory,
   Secret,
+  Service,
   object,
   func,
 } from "@dagger.io/dagger"
@@ -60,6 +63,7 @@ import { PreviewDeploy } from "./preview-deploy.js"
 import { CloudflarePages } from "./cloudflare-pages.js"
 import { DotnetMigrations } from "./dotnet-migrations.js"
 import { Changelog } from "./changelog.js"
+import { Postgres } from "./postgres.js"
 
 export { NodeCi } from "./node.js"
 export { Frontend } from "./frontend.js"
@@ -76,6 +80,7 @@ export { PreviewDeploy } from "./preview-deploy.js"
 export { CloudflarePages } from "./cloudflare-pages.js"
 export { DotnetMigrations } from "./dotnet-migrations.js"
 export { Changelog } from "./changelog.js"
+export { Postgres } from "./postgres.js"
 
 @object()
 export class DaggerPipelines {
@@ -205,6 +210,14 @@ export class DaggerPipelines {
     return new Changelog()
   }
 
+  /**
+   * Reusable Postgres service pipeline (ephemeral DB for integration tests)
+   */
+  @func()
+  postgres(): Postgres {
+    return new Postgres()
+  }
+
   // ── .NET pipeline functions ─────────────────────────────────────────
   /**
    * Base .NET SDK container with source mounted and restored
@@ -328,6 +341,14 @@ export class DaggerPipelines {
    * Full CI pipeline: restore → build → test → pack
    *
    * Returns the container with .nupkg files in /packages ready for publish.
+   *
+   * Set `postgres` to true to run the test step against an ephemeral Postgres
+   * bound into the test container, with its connection string exported as the
+   * environment variable named by `postgresConnStringEnv` (default
+   * `DATABASE_URL`). This is opt-in: with `postgres` false (the default) the
+   * test container is untouched and behaves exactly as before. The other
+   * `postgres*` parameters tune the image, database name, credentials, bound
+   * hostname, and port.
    */
   @func()
   async ci(
@@ -338,12 +359,45 @@ export class DaggerPipelines {
     dotnetVersion: string = "8.0",
     configuration: string = "Release",
     testProject: string = "",
+    postgres: boolean = false,
+    postgresDbName: string = "app",
+    postgresUser: string = "postgres",
+    postgresPassword: string = "postgres",
+    postgresImage: string = "postgres:16-alpine",
+    postgresHost: string = "postgres",
+    postgresPort: number = 5432,
+    postgresConnStringEnv: string = "DATABASE_URL",
   ): Promise<Container> {
     const built = this.build(source, solution, dotnetVersion, configuration)
 
+    // Bind an ephemeral Postgres to the test container only when opted in;
+    // otherwise the test step runs against the plain built container.
+    let testContainer = built
+    if (postgres) {
+      const pg = this.postgres()
+      const service = pg.service(
+        postgresDbName,
+        postgresUser,
+        postgresPassword,
+        postgresImage,
+        postgresPort,
+      )
+      testContainer = await pg.bind(
+        built,
+        service,
+        postgresHost,
+        postgresDbName,
+        postgresUser,
+        postgresPassword,
+        postgresPort,
+        postgresImage,
+        postgresConnStringEnv,
+      )
+    }
+
     // Run tests — fail fast before packing
     const target = testProject || solution
-    await built
+    await testContainer
       .withExec([
         "dotnet",
         "test",
@@ -475,6 +529,42 @@ export class DaggerPipelines {
     return container
       .withExec(["sh", "-c", "ls /packages/*.nupkg && echo CI_OK"])
       .stdout()
+  }
+
+  /**
+   * Verify the CI pipeline still succeeds end-to-end with Postgres enabled
+   *
+   * Runs the fixture through `ci` with `postgres` on, so the test step executes
+   * with an ephemeral Postgres bound and `DATABASE_URL` exported. Confirms the
+   * opt-in path builds, tests, and packs without breaking.
+   */
+  @func()
+  async testCiPostgres(): Promise<string> {
+    const source = dag.currentModule().source().directory("testdata")
+    const container = await this.ci(
+      source,
+      "TestProject.sln",
+      "src/TestLib/TestLib.csproj",
+      "0.0.0-test",
+      "8.0",
+      "Release",
+      "",
+      true,
+    )
+    return container
+      .withExec(["sh", "-c", "ls /packages/*.nupkg && echo CI_POSTGRES_OK"])
+      .stdout()
+  }
+
+  /**
+   * Verify a bound Postgres service is genuinely connectable
+   *
+   * Delegates to the Postgres module's own connection proof: starts a service,
+   * waits for readiness, and reports the server version over a real connection.
+   */
+  @func()
+  async testPostgres(): Promise<string> {
+    return this.postgres().testConnection()
   }
 
   // ── Versioning test functions ───────────────────────────────────────

@@ -25,6 +25,7 @@ This Dagger module extracts those pipelines into composable, container-based def
 | **Docker** | `dagger call docker [fn]` | Build from Dockerfile, push to any OCI registry |
 | **Preview Deploy** | `dagger call preview-deploy [fn]` | PR preview deployments to Cloudflare Pages |
 | **DB Migrations** | `dagger call dotnet-migrations [fn]` | EF Core migration validation |
+| **Postgres** | `dagger call postgres [fn]` | Ephemeral Postgres service for integration tests |
 | **Changelog** | `dagger call changelog [fn]` | Conventional commit changelog generation |
 
 ---
@@ -590,6 +591,93 @@ dagger call dotnet-migrations validate \
 | `dotnet-version` | `8.0` | .NET SDK version tag |
 | `startup-project` | — | Startup project (if DbContext is in a class library) |
 | `db-context` | — | Specific DbContext class name (if multiple) |
+
+---
+
+## Postgres
+
+An ephemeral Postgres server as a Dagger `Service`, for integration tests and other steps that need a real database in the container. It starts Postgres, waits until it is ready to serve, binds it to a consuming container, and exports the connection string as an environment variable. It applies no migrations, seeds no data, and assumes no schema — the job ends at "a Postgres is reachable and its connection string is set". Every knob (image, database name, user, password, bound hostname, port, connection-string variable) is a parameter with a default.
+
+Two ways to use it: the `.NET` `ci` function takes an opt-in `--postgres` flag that binds a service around the test step, or you can call the module directly to get a `Service` and bind it into any pipeline you are building.
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `service` | Return a ready-to-bind Postgres `Service` |
+| `bind` | Bind a service to a container, wait for readiness, export the connection string |
+| `connection-string` | Build a libpq connection string for a bound service |
+| `wait-until-ready` | Block until a service accepts real connections (`pg_isready` loop) |
+| `test-connection` | Start a service, connect, and print the server version |
+
+### Readiness
+
+A bound Postgres answers on its TCP port before it can serve queries, so a plain port-open check is not enough. `bind` runs `pg_isready` (shipped in the Postgres image) against the service in a retry loop and only returns once it reports ready, so the connection string handed to the consuming container works on first use.
+
+### Usage
+
+```bash
+# Run .NET tests with a Postgres bound and DATABASE_URL exported
+dagger call ci \
+  --source=. \
+  --solution="MyLib.sln" \
+  --projects="src/MyLib/MyLib.csproj" \
+  --postgres
+
+# Same, with custom knobs — different image, database, credentials, and the
+# variable the connection string lands in
+dagger call ci \
+  --source=. \
+  --solution="MyLib.sln" \
+  --projects="src/MyLib/MyLib.csproj" \
+  --postgres \
+  --postgres-image="postgres:17-alpine" \
+  --postgres-db-name="myapp" \
+  --postgres-user="myapp" \
+  --postgres-password=devpass \
+  --postgres-conn-string-env="MYAPP_DB"
+
+# Get a standalone service for a pipeline you are building
+dagger call postgres service --db-name="myapp" --user="myapp"
+
+# Prove connectivity: start a service, connect, print the server version
+dagger call postgres test-connection
+```
+
+Wire it into your own module by binding the returned service to a container:
+
+```ts
+import { Postgres } from "./postgres.js"
+
+const pg = new Postgres()
+const service = pg.service("myapp", "myapp", "devpass")
+const ready = await pg.bind(
+  myContainer,
+  service,
+  "postgres",       // bound hostname
+  "myapp",          // database
+  "myapp",          // user
+  "devpass",        // password
+  5432,
+  "postgres:16-alpine",
+  "DATABASE_URL",   // env var the connection string is exported under
+)
+// `ready` runs with Postgres reachable at postgres:5432 and DATABASE_URL set
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `db-name` | `app` | Database provisioned by the image |
+| `user` | `postgres` | Database user |
+| `password` | `postgres` | Database password |
+| `image` | `postgres:16-alpine` | Postgres image tag |
+| `port` | `5432` | Port Postgres listens on |
+| `host` | `postgres` | Hostname the service is bound under in the container |
+| `conn-string-env` | `DATABASE_URL` | Environment variable the connection string is exported under (`bind`) |
+
+On `ci`, the same knobs are prefixed — `--postgres-db-name`, `--postgres-user`, `--postgres-password`, `--postgres-image`, `--postgres-port`, `--postgres-host`, `--postgres-conn-string-env` — and are inert unless `--postgres` is passed.
 
 ---
 
